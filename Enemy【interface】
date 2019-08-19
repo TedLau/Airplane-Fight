@@ -1,0 +1,5 @@
+package shootGame;
+
+public interface Enemy {
+	public int getScore();
+}
