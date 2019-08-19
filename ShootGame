@@ -1,0 +1,432 @@
+package shootGame;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.awt.Graphics;
+import java.util.Random;
+import javax.imageio.ImageIO;
+import javax.swing.JFrame;
+import javax.swing.JPanel;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.Arrays;
+import java.awt.Color;
+import java.awt.Font;
+@SuppressWarnings("serial")
+public class ShootGame extends JPanel{
+	public static final int WIDTH = 400;
+	public static final int HEIGHT = 654;//窗口大小	
+	public static BufferedImage background;//以下至27行，为图片变量的声明
+	public static BufferedImage start;
+	public static BufferedImage pause;
+	public static BufferedImage gameover;
+	public static BufferedImage airplane;
+	public static BufferedImage bee;
+	public static BufferedImage bullet;
+	public static BufferedImage hero0;
+	public static BufferedImage hero1;
+	public static final int START = 0;//给不同的状态设定序号，从而可以在不同的时间段加载不同的图片
+	public static final int RUNNING = 1;
+	public static final int PAUSE = 2;
+	public static final int GAMEOVER =3;
+	public int state = START;//初始状态设置为开始即：START
+	private Hero hero = new Hero();//初始化英雄机对象，使得一切归零，以下为初始化飞行物即敌人（小蜜蜂在内）子弹对象
+	private FlyingObject[] flyings = {};
+	private Bullet[] bullets = {};
+	
+	/*ShootGame(){//
+
+		flyings = new FlyingObject[2];
+		flyings[0] = new Airplane();
+		flyings[1] = new Bee();
+		bullets = new Bullet[1];
+		bullets[0] = new Bullet(00,-40);
+	}*/
+	static {//初始化静态资源(图片资源的引入
+		try {
+			background = ImageIO.read(ShootGame.class.getResource("background.png"));
+			start = ImageIO.read(ShootGame.class.getResource("start.png"));
+			pause = ImageIO.read(ShootGame.class.getResource("pause.png"));
+			gameover = ImageIO.read(ShootGame.class.getResource("gameover.png"));
+			airplane = ImageIO.read(ShootGame.class.getResource("airplane.png"));
+			bee = ImageIO.read(ShootGame.class.getResource("bee.png"));
+			bullet = ImageIO.read(ShootGame.class.getResource("bullet.png"));
+			hero0 = ImageIO.read(ShootGame.class.getResource("hero0.png"));
+			hero1 = ImageIO.read(ShootGame.class.getResource("hero1.png"));
+		}catch(Exception e) {//异常的处理手段
+			e.printStackTrace();
+		}
+	}//画笔，G系统调用
+	public FlyingObject nextOne() {
+		Random rand = new Random();
+		int type = rand.nextInt(20);//随机生成小于19的数字，若生成的数字为0，则产生小蜜蜂，即奖励
+		if(type == 0) {
+			return new Bee();
+		}else {
+			return new Airplane();//否则则产生敌机
+		}
+	}
+	int flyEnteredIndex = 0;//将飞入屏幕的敌机数量归零
+	int shootIndex = 0;
+	//入场
+	public void enterAction() {//
+		flyEnteredIndex++;
+		if(flyEnteredIndex%40 == 0) {//每隔10ms进入一次Action方法，当flyEnteredIndex可以整除40，即400ms后产生一个新的敌人
+			FlyingObject one = nextOne();
+			flyings = Arrays.copyOf(flyings,flyings.length+1);//数组扩容，以容纳新的敌人
+			flyings[flyings.length-1] = one;//将新产生的敌人排序到数组中的最后一个位置
+		}
+	}
+	public void stepAction() {//对象的移动，调用各类中的方法，以x，y的变化来表示飞行物的移动
+		hero.step();
+		for(int i=0;i<flyings.length;i++) {
+			flyings[i].step();
+		}
+		for(int i=0;i<bullets.length;i++) {
+			bullets[i].step();
+		}
+	}
+	public void shootAction() {
+		shootIndex++;
+		if(shootIndex%30==0) {//同理，每隔300ms产生一个新的子弹对象
+			Bullet[] bs = hero.shoot();//获取子弹对象
+			bullets =Arrays.copyOf(bullets, bullets.length+bs.length);
+			System.arraycopy(bs, 0,bullets,bullets.length-bs.length,bs.length);
+		}
+	}
+	public void outOfBoundsAction() {
+		int index = 0;//不越界敌人数组下标，不越界敌人的个数、
+
+		FlyingObject[] flyingLives = new FlyingObject[flyings.length];
+		for(int i =0;i<flyings.length;i++) {
+			FlyingObject f = flyings[i];
+			
+			if(!f.outOfBounds()) {//不越界
+				flyingLives[index] = f;//将不越界的敌人装入数组中
+				index++;//个数增1
+			}
+		}
+		flyings = Arrays.copyOf(flyingLives, index);
+		index = 0;//同理，如果子弹未越界，则重新对子弹对象进行改造
+		Bullet[] bulletLives = new Bullet[bullets.length];
+		for(int i=0;i<bullets.length;i++) {
+			Bullet b = bullets[i];
+			if(!b.outOfBounds()) {
+				bulletLives[index] =b;
+				index++;
+			}
+		}
+		bullets= Arrays.copyOf(bulletLives, index);
+	}
+	public void bangAction() {
+		for(int i=0;i<bullets.length;i++) {
+			Bullet b = bullets[i];
+			bang(b);//拆分成两个任务（方法
+		}
+	}//一个子弹的碰撞与所有的敌人
+	int score = 0;
+	/*
+	 * 子弹与飞行物的碰撞，将每一个子弹与所有敌人进行比较，看是否已经相撞
+	 * 若相撞，则获取被撞敌人的下标，然后根据instanceof来判断被撞的敌人类型
+	 * 若为敌机，则考虑加分项
+	 * 若为小蜜蜂，则再根据随机数来判断是加生命还是加火力值
+	 */
+	public void bang(Bullet b) {
+		int index = -1;
+		for(int i=0;i<flyings.length;i++) {
+			FlyingObject f = flyings[i];
+			if(f.shootBy(b)) {
+				index = i;
+				break;
+			}
+		}
+		if(index != -1) {
+			FlyingObject one = flyings[index];//获取被撞的敌人
+			if(one instanceof Enemy) {
+				Enemy e = (Enemy)one;
+				score += e.getScore();
+			}
+			if(one instanceof Award) {
+				Award  a = (Award)one;
+				int type = a.getType();//获取奖励类型
+				switch(type) {//根据类型获取不同的奖励
+				case Award.DOUBLE_FIRE:
+					hero.addDoubleFire();
+					break;
+				case Award.LIFE:
+					hero.addLife();
+					break;
+				}
+			}
+			FlyingObject t = flyings[index];
+			flyings[index] = flyings[flyings.length-1];
+			flyings[flyings.length-1] = t;
+			flyings = Arrays.copyOf(flyings,flyings.length-1);
+		}
+	}
+	
+	
+	public void checkGameOverAction() {
+		if(isGameOver()) {
+			state = GAMEOVER;
+		}
+	}
+	/*
+	 * 判断是否已经到了游戏结束的时间段，检查英雄机所剩life，
+	 * 若为0甚至更小，则退出游戏，屏幕显示GAMEOVER
+	 */
+	
+	public boolean isGameOver() {//检查游戏结束，true结束
+		for(int i=0;i<flyings.length;i++) {
+			FlyingObject f = flyings[i];
+			if(hero.hit(f)) {
+				hero.subractLife();
+				hero.clearDoubleFire();
+				FlyingObject t = flyings[i];
+				flyings[i] = flyings[flyings.length-1];
+				flyings[flyings.length-1] = t;
+				flyings = Arrays.copyOf(flyings, flyings.length-1);
+			}
+		}
+		return hero.getLife()<=0;
+	}
+	public void action() {
+		MouseAdapter l = new MouseAdapter() {
+			//重写鼠标移动事件
+			/*
+			 *MouseAdapter 是一个抽象类其继承了
+			 *java.awt.event.MouseListener, java.awt.event.MouseWheelListener, java.awt.event.MouseMotionListener 
+			 *所以需要重写它所继承的抽象方法 
+			 */
+			public void mouseMoved(MouseEvent e) {
+				/*
+				 * 只有当状态为运行的时候，才触发鼠标移动的方法
+				 */
+				if(state == RUNNING) {
+					int x = e.getX();
+					int y = e.getY();
+					hero.moveTo(x, y);
+				}
+			
+			}
+			/*
+			 * 鼠标点击分为两种情况
+			 * 若为开始阶段，则点击之后变为运行阶段，
+			 * 若为结束阶段，则点击之后一切归零游戏重新开始
+			 * 
+			 */
+			public void mouseClicked(MouseEvent e) {
+				switch(state) {
+				case START:
+					state = RUNNING;
+					break;
+				case GAMEOVER:
+					score = 0;
+					hero = new Hero();
+					flyings = new FlyingObject[0];
+					bullets = new Bullet[0];
+					state = START;
+					break;
+				}
+			}
+			/*
+			 * 当鼠标移出屏幕后，游戏状态由运行变为暂停
+			 * 当鼠标移入屏幕后，游戏状态由暂停变为运行
+			 */
+			public void mouseExited(MouseEvent e) {
+				if(state == RUNNING) {
+					state = PAUSE;
+				}
+			}
+			public void mouseEntered(MouseEvent e) {
+				if(state == PAUSE) {
+					state = RUNNING;
+				}
+			}
+		};
+		this.addMouseListener(l);
+		this.addMouseMotionListener(l);
+		Timer timer = new Timer();
+		int interval = 10;//毫秒为单位
+		timer.schedule(new TimerTask() {
+			//由于只需要执行一些方法，之后就不再需要这个类，所以做成匿名类
+			public void run() {//只有在运行状态时，所有的Action方法才可以运行
+				if(state == RUNNING) {
+					enterAction();
+					stepAction();
+					shootAction();
+					outOfBoundsAction();
+					bangAction();
+					checkGameOverAction();
+				}
+			
+				repaint();
+			}
+		},interval,interval);
+	}
+	public void paint(Graphics g) {
+		g.drawImage(background,0,0,null);//（0,0）坐标
+		paintHero(g);
+		paintFlyingObjects(g);
+		paintBullets(g);
+		paintScoreAndLife(g);//分数和命
+		paintState(g);
+	}
+	public void paintHero(Graphics g) {
+		g.drawImage(hero.image,hero.x,hero.y,null);
+	}
+	public void paintFlyingObjects(Graphics g) {
+		for(int i=0;i<flyings.length;i++) {
+			FlyingObject f = flyings[i];
+			g.drawImage(f.image,f.x,f.y,null);//图片，左边，null即不执行任何操作
+		}
+	}
+	public void paintBullets(Graphics g) {
+		for(int i=0;i<bullets.length;i++) { 
+			Bullet b = bullets[i];
+			g.drawImage(b.image,b.x,b.y,null);
+		}
+	}
+	public void paintScoreAndLife(Graphics g) {
+		g.setColor(new Color(0xFF0000));//设置颜色
+		g.setFont(new Font(Font.SANS_SERIF,Font.BOLD,24));//字体样式,加粗，大小
+		g.drawString("Score:"+score,10,25);//左10 上25 距离
+		g.drawString("Life:"+hero.getLife(),10,45);
+	}
+	public void paintState(Graphics g) {
+		//根据不同的状态来贴不同的图片
+		switch(state) {
+		case START:
+			g.drawImage(start,0,0,null);
+			break;
+		case PAUSE:
+			g.drawImage(pause,0,0,null);
+			break;
+		case GAMEOVER:
+			g.drawImage(gameover,0,0,null);
+			break;
+		}
+	}
+	public static void main(String[] args) {
+		JFrame frame  = new JFrame("ShootGame");//新建一个面板
+		ShootGame game = new ShootGame();
+		frame.add(game);
+		frame.setSize(WIDTH,HEIGHT);
+		frame.setAlwaysOnTop(true);
+		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		frame.setLocationRelativeTo(null);
+		frame.setVisible(true);//paint	
+		game.action();//启动程序的执行
+	}
+	
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
