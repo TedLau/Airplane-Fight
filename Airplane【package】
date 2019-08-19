@@ -1,0 +1,29 @@
+package shootGame;
+import java.util.Random;
+public class Airplane extends FlyingObject implements Enemy{
+	private int speed = 2;
+	public Airplane() {
+		/*
+		 * 引入airplane的静态图片
+		 * 宽高则是图片的宽和高
+		 * 敌机出现的x坐标是随机的
+		 * y坐标为高度的负数，为了刚开始时的屏幕整洁
+		 */
+		image = ShootGame.airplane;
+		width = image.getWidth();
+		height = image.getHeight();
+		Random rand = new Random();
+		x = rand.nextInt(ShootGame.WIDTH-this.width);
+		y = -this.height;
+		
+				}
+	public int getScore() {
+		return 5;//打一个敌机，会得到5分
+	}
+	public void step() {
+		y+=speed;//敌机的移动即通过y坐标的变化来实现的
+	}
+	public boolean outOfBounds() {
+		return this.y>=ShootGame.HEIGHT;//如果敌机的y坐标大于或者等于了面板的高，那么出界
+	}
+}
