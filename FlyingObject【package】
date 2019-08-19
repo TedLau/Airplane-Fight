@@ -1,0 +1,37 @@
+package shootGame;
+//飞行物类
+import java.awt.image.BufferedImage;
+public abstract class FlyingObject {
+				protected BufferedImage image;
+				protected  int width;
+				protected  int height;
+				protected  int x;
+				protected  int y;
+				public abstract void step();
+				public abstract boolean outOfBounds();//检查是否越界，true已经越界，false未
+				public boolean shootBy(Bullet bullet) {//this:敌人
+					int x1 = this.x;
+					int x2 = this.x+this.width;
+					int y1 = this.y;//diren
+					int y2 = this.height+this.y;
+					int x = bullet.x;//zidan
+					int y = bullet.y;//zida
+					return x>x1 && x<x2
+							&&
+							y>y1 && y<y2;//设定范围
+				}
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+}
